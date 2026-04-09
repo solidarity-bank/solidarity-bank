@@ -9,51 +9,85 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-mongoose.connect("mongodb://127.0.0.1:27017/bank");
+// ✅ CONNECT TO MONGODB (FIXED)
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => console.log("MongoDB connected"))
+  .catch(err => console.log(err));
 
-const User = mongoose.model('User',{
-  email:String,
-  password:String,
-  balance:{type:Number, default:1000},
-  frozen:{type:Boolean, default:false}
+// ✅ USER MODEL
+const User = mongoose.model('User', {
+  email: String,
+  password: String,
+  balance: { type: Number, default: 1000 },
+  frozen: { type: Boolean, default: false }
 });
 
-// REGISTER
-app.post('/register', async(req,res)=>{
-  const hash = await bcrypt.hash(req.body.password,10);
-  const user = await User.create({email:req.body.email,password:hash});
-  res.send(user);
+// ✅ REGISTER
+app.post('/register', async (req, res) => {
+  try {
+    const hash = await bcrypt.hash(req.body.password, 10);
+    const user = await User.create({
+      email: req.body.email,
+      password: hash
+    });
+    res.send(user);
+  } catch (err) {
+    res.status(500).send("Error registering user");
+  }
 });
 
-// LOGIN
-app.post('/login', async(req,res)=>{
-  const user = await User.findOne({email:req.body.email});
-  if(!user) return res.send("User not found");
+// ✅ LOGIN
+app.post('/login', async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) return res.send("User not found");
 
-  const valid = await bcrypt.compare(req.body.password,user.password);
-  if(!valid) return res.send("Wrong password");
+    const valid = await bcrypt.compare(req.body.password, user.password);
+    if (!valid) return res.send("Wrong password");
 
-  const token = jwt.sign({id:user._id},"SECRET");
-  res.send({token, userId:user._id});
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+    res.send({ token, userId: user._id });
+  } catch (err) {
+    res.status(500).send("Login error");
+  }
 });
 
-// TRANSFER
-app.post('/transfer', async(req,res)=>{
-  const user = await User.findById(req.body.userId);
-  if(user.frozen) return res.send("Account Frozen");
+// ✅ TRANSFER (basic)
+app.post('/transfer', async (req, res) => {
+  try {
+    const user = await User.findById(req.body.userId);
 
-  user.balance -= req.body.amount;
-  await user.save();
+    if (!user) return res.send("User not found");
+    if (user.frozen) return res.send("Account Frozen");
 
-  res.send(user);
+    if (user.balance < req.body.amount)
+      return res.send("Insufficient funds");
+
+    user.balance -= req.body.amount;
+    await user.save();
+
+    res.send(user);
+  } catch (err) {
+    res.status(500).send("Transfer error");
+  }
 });
 
-// FREEZE ACCOUNT
-app.post('/freeze', async(req,res)=>{
-  const user = await User.findById(req.body.userId);
-  user.frozen = !user.frozen;
-  await user.save();
-  res.send(user);
+// ✅ FREEZE ACCOUNT
+app.post('/freeze', async (req, res) => {
+  try {
+    const user = await User.findById(req.body.userId);
+
+    if (!user) return res.send("User not found");
+
+    user.frozen = !user.frozen;
+    await user.save();
+
+    res.send(user);
+  } catch (err) {
+    res.status(500).send("Freeze error");
+  }
 });
 
-app.listen(3001, ()=>console.log("Server running on 3001"));
+// ✅ PORT FIX (IMPORTANT FOR RAILWAY)
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
